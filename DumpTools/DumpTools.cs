@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using Microsoft.Diagnostics.Runtime;
@@ -50,16 +49,11 @@ namespace DumpTools
         {
             using (var dataTarget = DataTarget.LoadCrashDump(dumpFilePath))
             {
-                dataTarget.AppendSymbolPath(symbolsPath);
-                var dacLocation = dataTarget.ClrVersions[0].TryGetDacLocation();
-                if (string.IsNullOrEmpty(dacLocation) && mscordacwks != null)
-                {
-                    dacLocation = mscordacwks;
-                }
+                //dataTarget.AppendSymbolPath(symbolsPath);
+                var runtime = dataTarget.ClrVersions[0].CreateRuntime();
 
-                var runtime = dataTarget.CreateRuntime(dacLocation);
                 heap = runtime.GetHeap();
-                objects = heap.EnumerateObjects();
+                objects = heap.EnumerateObjectAddresses();
                 ProcessHeap();
                 WriteReport();
             }
