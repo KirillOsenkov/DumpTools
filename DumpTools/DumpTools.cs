@@ -15,15 +15,15 @@ namespace DumpTools
 
         static void Main(string[] args)
         {
-            if (args.Length != 3)
+            if (args.Length == 0 || args.Length > 3)
             {
                 PrintUsage();
                 return;
             }
 
             string dumpFilePath = args[0];
-            string mscordacwksFilePath = args[1];
-            string symbolsPath = args[2];
+            string mscordacwksFilePath = args.Length >= 2 ? args[1] : "";
+            string symbolsPath = args.Length >= 3 ? args[2] : "";
 
             if (!File.Exists(dumpFilePath))
             {
@@ -50,7 +50,7 @@ namespace DumpTools
             using (var dataTarget = DataTarget.LoadCrashDump(dumpFilePath))
             {
                 //dataTarget.AppendSymbolPath(symbolsPath);
-                var runtime = dataTarget.ClrVersions[0].CreateRuntime();
+                var runtime = dataTarget.ClrVersions[0].CreateRuntime(mscordacwks);
 
                 heap = runtime.GetHeap();
                 objects = heap.EnumerateObjectAddresses();
@@ -63,8 +63,10 @@ namespace DumpTools
         {
             using (var stream = new StreamWriter("report.txt"))
             {
-                var sorted = stringUsages.OrderByDescending(kvp => kvp.Value.Count * kvp.Key.Length).Take(10);
-                stream.WriteLine("TOP 10 STRINGS that take most space ===========================================");
+                const int stringCount = 10;
+                var sorted = stringUsages.OrderByDescending(kvp => kvp.Value.Count * kvp.Key.Length).Take(stringCount);
+                stream.WriteLine($"TOP {stringCount} STRINGS that take most space ===========================================");
+                int i = 0;
                 foreach (var kvp in sorted)
                 {
                     var msg = "Count: " +
@@ -75,9 +77,12 @@ namespace DumpTools
                         kvp.Key.Substring(0, Math.Min(kvp.Key.Length, 500)) +
                         "\r\n\r\n";
                     stream.WriteLine(msg);
+                    File.WriteAllText($"StringInstance{i++}.txt", kvp.Key);
                 }
 
-                var topInstances = instances.OrderByDescending(kvp => kvp.Value.Count).Take(5);
+                const int instanceCount = 5;
+                var topInstances = instances.OrderByDescending(kvp => kvp.Value.Count).Take(instanceCount);
+                stream.WriteLine($"TOP {instanceCount} INSTANCES that take most space ===========================================");
                 foreach (var kvp in topInstances)
                 {
                     var msg = kvp.Key.Name + " (" + kvp.Value.Count + " instances): " + string.Join(",", kvp.Value.Take(3).Select(ul => Convert.ToString((long)ul, 16))) + "\r\n";
