@@ -10,6 +10,10 @@ namespace DumpTools
     {
         private Dictionary<string, List<ulong>> stringUsages = new Dictionary<string, List<ulong>>();
         private Dictionary<ClrType, List<ulong>> instances = new Dictionary<ClrType, List<ulong>>();
+        private ulong stringsTotalSize = 0;
+        private ulong stringCount = 0;
+        private ulong instancesTotalSize = 0;
+        private ulong instanceCount = 0;
         private ClrHeap heap;
         private IEnumerable<ulong> objects;
 
@@ -63,6 +67,12 @@ namespace DumpTools
         {
             using (var stream = new StreamWriter("report.txt"))
             {
+                stream.WriteLine("Total instances: " + this.instanceCount.ToString("N0"));
+                stream.WriteLine("Total instance size: " + this.instancesTotalSize.ToString("N0"));
+                stream.WriteLine("Total strings: " + this.stringCount.ToString("N0"));
+                stream.WriteLine("Total string size: " + this.stringsTotalSize.ToString("N0"));
+                stream.WriteLine();
+
                 const int stringCount = 10;
                 var sorted = stringUsages.OrderByDescending(kvp => kvp.Value.Count * kvp.Key.Length).Take(stringCount);
                 stream.WriteLine($"TOP {stringCount} STRINGS that take most space ===========================================");
@@ -112,6 +122,9 @@ namespace DumpTools
 
         private void ProcessInstance(ulong instance, ClrType type)
         {
+            instanceCount++;
+            instancesTotalSize += type.GetSize(instance);
+
             List<ulong> bucket = null;
             if (!instances.TryGetValue(type, out bucket))
             {
@@ -125,6 +138,9 @@ namespace DumpTools
         private void ProcessString(ulong instance, ClrType type)
         {
             var value = (string)type.GetValue(instance);
+
+            stringCount++;
+            stringsTotalSize += type.GetSize(instance);
 
             List<ulong> usages = null;
             if (!stringUsages.TryGetValue(value, out usages))
