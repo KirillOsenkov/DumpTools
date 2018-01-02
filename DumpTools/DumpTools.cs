@@ -49,6 +49,24 @@ namespace DumpTools
             Console.WriteLine("Usage: DumpTools.exe <path-to-dump.dmp> <path-to-mscordacwks.dll> <symbol-path>");
         }
 
+        public struct Span
+        {
+            public ulong Start;
+            public ulong Length;
+
+            public Span(ulong start, int length) : this()
+            {
+                this.Start = start;
+                this.Length = (ulong)length;
+            }
+
+            public Span(ulong start, ulong length) : this()
+            {
+                this.Start = start;
+                this.Length = length;
+            }
+        }
+
         private void Analyze(string dumpFilePath, string mscordacwks, string symbolsPath)
         {
             using (var dataTarget = DataTarget.LoadCrashDump(dumpFilePath))
@@ -56,11 +74,50 @@ namespace DumpTools
                 //dataTarget.AppendSymbolPath(symbolsPath);
                 var runtime = dataTarget.ClrVersions[0].CreateRuntime(mscordacwks);
 
-                heap = runtime.GetHeap();
-                objects = heap.EnumerateObjectAddresses();
-                ProcessHeap();
-                WriteReport();
+                string modulesFolder = Path.Combine(Path.GetDirectoryName(dumpFilePath), "Assemblies");
+                Directory.CreateDirectory(modulesFolder);
+
+                foreach (var appDomain in runtime.AppDomains)
+                {
+                    foreach (var module in appDomain.Modules.Skip(1).Take(1))
+                    {
+                        if (module.FileName == null)
+                        {
+                            continue;
+                        }
+
+                        var bytes1 = ReadMemory(dataTarget, new Span(module.ImageBase, 960));
+                        var bytes2 = ReadMemory(dataTarget, new Span(module.MetadataAddress, module.MetadataLength));
+                        var bytes = bytes1.Concat(bytes2).ToArray();
+
+                        string outputFilePath = Path.Combine(modulesFolder, Path.GetFileName(module.FileName));
+                        File.WriteAllBytes(outputFilePath, bytes);
+                    }
+                }
+
+                foreach (var nativeModule in dataTarget.EnumerateModules())
+                {
+                    var bytes = ReadMemory(dataTarget, new Span(nativeModule.ImageBase, nativeModule.FileSize));
+                    string outputFilePath = Path.Combine(modulesFolder, Path.GetFileName(nativeModule.FileName));
+                    File.WriteAllBytes(outputFilePath, bytes);
+                }
+
+                //heap = runtime.GetHeap();
+                //objects = heap.EnumerateObjectAddresses();
+                //ProcessHeap();
+                //WriteReport();
             }
+        }
+
+        public static byte[] ReadMemory(DataTarget dataTarget, Span span)
+        {
+            byte[] bytes = new byte[span.Length];
+            if (dataTarget.DataReader.ReadMemory(span.Start, bytes, bytes.Length, out var bytesRead))
+            {
+                return bytes;
+            }
+
+            return null;
         }
 
         private void WriteReport()
