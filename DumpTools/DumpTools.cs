@@ -69,7 +69,7 @@ namespace DumpTools
 
         private void Analyze(string dumpFilePath, string mscordacwks, string symbolsPath)
         {
-            using (var dataTarget = DataTarget.LoadCrashDump(dumpFilePath))
+            using (var dataTarget = DataTarget.LoadDump(dumpFilePath))
             {
                 //dataTarget.AppendSymbolPath(symbolsPath);
                 var runtime = dataTarget.ClrVersions[0].CreateRuntime(mscordacwks);
@@ -81,7 +81,7 @@ namespace DumpTools
                 {
                     foreach (var module in appDomain.Modules.Skip(1).Take(1))
                     {
-                        if (module.FileName == null)
+                        if (module.Name == null)
                         {
                             continue;
                         }
@@ -90,14 +90,14 @@ namespace DumpTools
                         var bytes2 = ReadMemory(dataTarget, new Span(module.MetadataAddress, module.MetadataLength));
                         var bytes = bytes1.Concat(bytes2).ToArray();
 
-                        string outputFilePath = Path.Combine(modulesFolder, Path.GetFileName(module.FileName));
+                        string outputFilePath = Path.Combine(modulesFolder, Path.GetFileName(module.AssemblyName));
                         File.WriteAllBytes(outputFilePath, bytes);
                     }
                 }
 
                 foreach (var nativeModule in dataTarget.EnumerateModules())
                 {
-                    var bytes = ReadMemory(dataTarget, new Span(nativeModule.ImageBase, nativeModule.FileSize));
+                    var bytes = ReadMemory(dataTarget, new Span(nativeModule.ImageBase, (int)nativeModule.ImageSize));
                     string outputFilePath = Path.Combine(modulesFolder, Path.GetFileName(nativeModule.FileName));
                     File.WriteAllBytes(outputFilePath, bytes);
                 }
@@ -112,7 +112,8 @@ namespace DumpTools
         public static byte[] ReadMemory(DataTarget dataTarget, Span span)
         {
             byte[] bytes = new byte[span.Length];
-            if (dataTarget.DataReader.ReadMemory(span.Start, bytes, bytes.Length, out var bytesRead))
+            var byteSpan = new Span<byte>(bytes);
+            if (dataTarget.DataReader.Read(span.Start, byteSpan) > 0)
             {
                 return bytes;
             }
@@ -180,7 +181,7 @@ namespace DumpTools
         private void ProcessInstance(ulong instance, ClrType type)
         {
             instanceCount++;
-            instancesTotalSize += type.GetSize(instance);
+            instancesTotalSize += (ulong)type.ComponentSize;
 
             List<ulong> bucket = null;
             if (!instances.TryGetValue(type, out bucket))
@@ -194,19 +195,19 @@ namespace DumpTools
 
         private void ProcessString(ulong instance, ClrType type)
         {
-            var value = (string)type.GetValue(instance);
+            //var value = (string)type.ToString(instance);
 
-            stringCount++;
-            stringsTotalSize += type.GetSize(instance);
+            //stringCount++;
+            //stringsTotalSize += type.GetSize(instance);
 
-            List<ulong> usages = null;
-            if (!stringUsages.TryGetValue(value, out usages))
-            {
-                usages = new List<ulong>(1);
-                stringUsages[value] = usages;
-            }
+            //List<ulong> usages = null;
+            //if (!stringUsages.TryGetValue(value, out usages))
+            //{
+            //    usages = new List<ulong>(1);
+            //    stringUsages[value] = usages;
+            //}
 
-            usages.Add(instance);
+            //usages.Add(instance);
         }
     }
 }
