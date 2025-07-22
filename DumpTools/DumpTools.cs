@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -15,7 +15,7 @@ namespace DumpTools
         private ulong instancesTotalSize = 0;
         private ulong instanceCount = 0;
         private ClrHeap heap;
-        private IEnumerable<ulong> objects;
+        private IEnumerable<ClrObject> objects;
 
         static void Main(string[] args)
         {
@@ -74,38 +74,43 @@ namespace DumpTools
                 //dataTarget.AppendSymbolPath(symbolsPath);
                 var runtime = dataTarget.ClrVersions[0].CreateRuntime(mscordacwks);
 
-                string modulesFolder = Path.Combine(Path.GetDirectoryName(dumpFilePath), "Assemblies");
-                Directory.CreateDirectory(modulesFolder);
+                //DumpModules(dumpFilePath, dataTarget, runtime);
 
-                foreach (var appDomain in runtime.AppDomains)
+                heap = runtime.Heap;
+                objects = heap.EnumerateObjects();
+                ProcessHeap();
+                //WriteReport();
+            }
+        }
+
+        private static void DumpModules(string dumpFilePath, DataTarget dataTarget, ClrRuntime runtime)
+        {
+            string modulesFolder = Path.Combine(Path.GetDirectoryName(dumpFilePath), "Assemblies");
+            Directory.CreateDirectory(modulesFolder);
+
+            foreach (var appDomain in runtime.AppDomains)
+            {
+                foreach (var module in appDomain.Modules.Skip(1).Take(1))
                 {
-                    foreach (var module in appDomain.Modules.Skip(1).Take(1))
+                    if (module.Name == null)
                     {
-                        if (module.Name == null)
-                        {
-                            continue;
-                        }
-
-                        var bytes1 = ReadMemory(dataTarget, new Span(module.ImageBase, 960));
-                        var bytes2 = ReadMemory(dataTarget, new Span(module.MetadataAddress, module.MetadataLength));
-                        var bytes = bytes1.Concat(bytes2).ToArray();
-
-                        string outputFilePath = Path.Combine(modulesFolder, Path.GetFileName(module.AssemblyName));
-                        File.WriteAllBytes(outputFilePath, bytes);
+                        continue;
                     }
-                }
 
-                foreach (var nativeModule in dataTarget.EnumerateModules())
-                {
-                    var bytes = ReadMemory(dataTarget, new Span(nativeModule.ImageBase, (int)nativeModule.ImageSize));
-                    string outputFilePath = Path.Combine(modulesFolder, Path.GetFileName(nativeModule.FileName));
+                    var bytes1 = ReadMemory(dataTarget, new Span(module.ImageBase, 960));
+                    var bytes2 = ReadMemory(dataTarget, new Span(module.MetadataAddress, module.MetadataLength));
+                    var bytes = bytes1.Concat(bytes2).ToArray();
+
+                    string outputFilePath = Path.Combine(modulesFolder, Path.GetFileName(module.AssemblyName));
                     File.WriteAllBytes(outputFilePath, bytes);
                 }
+            }
 
-                //heap = runtime.GetHeap();
-                //objects = heap.EnumerateObjectAddresses();
-                //ProcessHeap();
-                //WriteReport();
+            foreach (var nativeModule in dataTarget.EnumerateModules())
+            {
+                var bytes = ReadMemory(dataTarget, new Span(nativeModule.ImageBase, (int)nativeModule.ImageSize));
+                string outputFilePath = Path.Combine(modulesFolder, Path.GetFileName(nativeModule.FileName));
+                File.WriteAllBytes(outputFilePath, bytes);
             }
         }
 
@@ -175,10 +180,53 @@ namespace DumpTools
                         ProcessInstance(instance, type);
                     }
                 }
+                else
+                {
+                }
             }
         }
 
-        private void ProcessInstance(ulong instance, ClrType type)
+        private void ProcessInstance(ClrObject instance, ClrType type)
+        {
+            if (type.IsString)
+            {
+                var text = instance.AsString();
+                if (text.Equals(@"C:\temp\mstest3\bin\Debug\net8.0\TestRunner.Core.dll", StringComparison.OrdinalIgnoreCase))
+                {
+                }
+
+                return;
+            }
+
+            if (type.Name == "Microsoft.Win32.SafeHandles.SafeFileHandle")
+            {
+            }
+
+            foreach (var field in type.Fields)
+            {
+                if (field.IsObjectReference)
+                {
+                    continue;
+                }
+
+                if (field.ElementType == ClrElementType.NativeInt ||
+                    field.ElementType == ClrElementType.NativeUInt ||
+                    field.ElementType == ClrElementType.Int64 ||
+                    field.ElementType == ClrElementType.UInt64 ||
+                    field.ElementType == ClrElementType.Pointer)
+                {
+                    IntPtr pointer = field.Read<IntPtr>(instance.Address, false);
+                    long value = pointer.ToInt64();
+                    if (value == 7216 ||
+                        value == 11340 ||
+                        value == 15996)
+                    {
+                    }
+                }
+            }
+        }
+
+        private void ProcessInstanceOld(ulong instance, ClrType type)
         {
             instanceCount++;
             instancesTotalSize += (ulong)type.ComponentSize;
